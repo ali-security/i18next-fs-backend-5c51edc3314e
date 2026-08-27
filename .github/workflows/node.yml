@@ -1,24 +1,43 @@
 name: node
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Optional mocha grep pattern; empty runs the full suite'
+        required: false
+        default: ''
 
 jobs:
   test:
     name: Test on node ${{ matrix.node }} and ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         node: [ '20.x', '18.x', '16.x' ]
         # os: [ubuntu-latest, windows-latest, macOS-latest]
         os: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
       - run: npm install
-      - run: npm test
+      - run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            npm run build && npx mocha test -R spec --exit --experimental-modules --grep "${{ inputs.test-filter }}" && npm run test:typescript
+          else
+            npm test
+          fi
+      - name: Pack the release tarball
+        if: matrix.node == '20.x'
+        run: npm pack
+      - name: Upload the release tarball
+        if: matrix.node == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: '*.tgz'
+          if-no-files-found: error
